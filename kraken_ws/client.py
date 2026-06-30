@@ -36,19 +36,22 @@ class KrakenWSClient:
 
     async def subscribe(
         self, channel: str, symbols: list[str], **extra_params: Any
-    ) -> None:
-        """Create per-symbol queues, send subscribe, and drain all acks.
+    ) -> list[dict[str, Any]]:
+        """Create per-symbol queues, send subscribe, drain all acks, and return them.
 
         Extra keyword arguments are forwarded into the params object, e.g.
-        interval=1 for ohlc or depth=10 for book.
+        interval=1 for ohlc or depth=10 for book.  Callers can inspect the
+        returned acks to check the success field (e.g. for invalid-input tests).
         """
         for symbol in symbols:
             self._queues[(channel, symbol)] = asyncio.Queue()
         params: dict[str, Any] = {"channel": channel, "symbol": symbols}
         params.update(extra_params)
         await self._ws.send(json.dumps({"method": "subscribe", "params": params}))
+        acks: list[dict[str, Any]] = []
         for _ in symbols:
-            await asyncio.wait_for(self._acks.get(), timeout=10.0)
+            acks.append(await asyncio.wait_for(self._acks.get(), timeout=10.0))
+        return acks
 
     async def unsubscribe(self, channel: str, symbols: list[str]) -> None:
         """Send unsubscribe, drain acks, then drop the subscription queues.
@@ -68,6 +71,16 @@ class KrakenWSClient:
             await asyncio.wait_for(self._acks.get(), timeout=10.0)
         for symbol in symbols:
             self._queues.pop((channel, symbol), None)
+
+    async def ping(self) -> dict[str, Any]:
+        """Send an application-level ping and return the pong response.
+
+        Distinct from the WS-protocol ping/pong — this is Kraken's own
+        {"method": "ping"} keepalive mechanism.  The response carries
+        time_in / time_out fields useful for latency checks.
+        """
+        await self._ws.send(json.dumps({"method": "ping"}))
+        return await asyncio.wait_for(self._acks.get(), timeout=10.0)
 
     async def next_message(
         self, channel: str, symbol: str, timeout: float = 10.0
