@@ -136,6 +136,12 @@ class KrakenWSClient:
                 await self._unmatched.put({"_raw": raw})
                 continue
 
+            # Book prices and quantities must preserve trailing zeros for CRC32
+            # (e.g. JSON "0.00005100" → Python float 5.1e-05 loses the zeros).
+            # Re-parse with parse_float=str so the checksum can be recomputed.
+            if msg.get("channel") == "book":
+                msg = json.loads(raw, parse_float=str)
+
             if "method" in msg:
                 await self._acks.put(msg)
                 continue
