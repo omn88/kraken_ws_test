@@ -24,6 +24,9 @@ def test_ohlc_candle_ordering(symbol: str, run, live_client: KrakenWSClient) -> 
     msg = run(live_client.next_message("ohlc", symbol, timeout=10))
     run(live_client.unsubscribe("ohlc", [symbol]))
     timestamps = [candle["interval_begin"] for candle in msg["data"]]
+    assert len(timestamps) >= 2, (
+        f"snapshot returned only {len(timestamps)} candle — ordering test requires at least 2"
+    )
     assert timestamps == sorted(timestamps), (
         f"candles not in chronological order: {timestamps}"
     )
