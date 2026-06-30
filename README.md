@@ -3,8 +3,8 @@
 Pytest test suite for Kraken's public WebSocket API v2 (`wss://ws.kraken.com/v2`).
 No Kraken account or API key required.
 
-**41 tests** across four channels (ticker, trade, ohlc, book):
-- 18 functional tests — schema, types, and value constraints per channel
+**42 tests** across five channels (ticker, trade, ohlc, book, instrument):
+- 19 functional tests — schema, types, and value constraints per channel; instrument channel confirms the hardcoded symbol list refers to live, active pairs
 - 13 reliability tests — timestamp ordering, book checksum integrity, reconnect recovery, keepalive, concurrent subscription demultiplexing, graceful unsubscribe, invalid input handling, ack latency, and schema stability
 - 10 unit tests — client message routing and queue lifecycle (no network)
 
@@ -63,6 +63,6 @@ kraken_ws/
   book.py        # CRC32 checksum computation for the book channel
 tests/
   unit/          # Tests of KrakenWSClient itself — no network, fully deterministic
-  functional/    # Per-channel schema and value tests (ticker, trade, ohlc, book)
+  functional/    # Per-channel schema and value tests (ticker, trade, ohlc, book, instrument)
   reliability/   # Non-functional invariants: ordering, integrity, recovery, validation
 ```
