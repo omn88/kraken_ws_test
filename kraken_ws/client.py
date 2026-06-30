@@ -27,10 +27,16 @@ class KrakenWSClient:
         Inject _connection (any async-iterable with a send() coroutine) to
         bypass the real network — used by unit tests in tests/unit/.
         """
-        self._ws = _connection if _connection is not None else await websockets.connect(self.url)
+        self._ws = (
+            _connection
+            if _connection is not None
+            else await websockets.connect(self.url)
+        )
         self._reader_task = asyncio.create_task(self._read_loop())
 
-    async def subscribe(self, channel: str, symbols: list[str], **extra_params: Any) -> None:
+    async def subscribe(
+        self, channel: str, symbols: list[str], **extra_params: Any
+    ) -> None:
         """Create per-symbol queues, send subscribe, and drain all acks.
 
         Extra keyword arguments are forwarded into the params object, e.g.
@@ -50,18 +56,26 @@ class KrakenWSClient:
         After this returns, messages for (channel, symbol) route to _unmatched,
         which lets tests assert no further data arrives for the feed.
         """
-        await self._ws.send(json.dumps({
-            "method": "unsubscribe",
-            "params": {"channel": channel, "symbol": symbols},
-        }))
+        await self._ws.send(
+            json.dumps(
+                {
+                    "method": "unsubscribe",
+                    "params": {"channel": channel, "symbol": symbols},
+                }
+            )
+        )
         for _ in symbols:
             await asyncio.wait_for(self._acks.get(), timeout=10.0)
         for symbol in symbols:
             self._queues.pop((channel, symbol), None)
 
-    async def next_message(self, channel: str, symbol: str, timeout: float = 10.0) -> dict[str, Any]:
+    async def next_message(
+        self, channel: str, symbol: str, timeout: float = 10.0
+    ) -> dict[str, Any]:
         """Return the next message from the given subscription queue."""
-        return await asyncio.wait_for(self._queues[(channel, symbol)].get(), timeout=timeout)
+        return await asyncio.wait_for(
+            self._queues[(channel, symbol)].get(), timeout=timeout
+        )
 
     async def __aenter__(self) -> "KrakenWSClient":
         """Connect on entry — enables `async with KrakenWSClient() as client`."""

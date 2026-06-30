@@ -6,6 +6,7 @@ client lifecycle are managed by fixtures in tests/unit/conftest.py.
 Keep this count separate from functional/reliability tests that satisfy the
 >=10 / >=3-channel submission requirement.
 """
+
 import asyncio
 import json
 
@@ -14,35 +15,42 @@ import json
 # Message builders
 # ---------------------------------------------------------------------------
 
+
 def ack(channel: str, symbol: str) -> str:
     """Return a JSON subscribe-ack string for the given channel/symbol."""
-    return json.dumps({
-        "method": "subscribe",
-        "result": {"channel": channel, "symbol": symbol, "snapshot": True},
-        "success": True,
-        "time_in": "2026-01-01T00:00:00Z",
-        "time_out": "2026-01-01T00:00:00Z",
-    })
+    return json.dumps(
+        {
+            "method": "subscribe",
+            "result": {"channel": channel, "symbol": symbol, "snapshot": True},
+            "success": True,
+            "time_in": "2026-01-01T00:00:00Z",
+            "time_out": "2026-01-01T00:00:00Z",
+        }
+    )
 
 
 def unsubscribe_ack(channel: str, symbol: str) -> str:
     """Return a JSON unsubscribe-ack string for the given channel/symbol."""
-    return json.dumps({
-        "method": "unsubscribe",
-        "result": {"channel": channel, "symbol": symbol},
-        "success": True,
-        "time_in": "2026-01-01T00:00:00Z",
-        "time_out": "2026-01-01T00:00:00Z",
-    })
+    return json.dumps(
+        {
+            "method": "unsubscribe",
+            "result": {"channel": channel, "symbol": symbol},
+            "success": True,
+            "time_in": "2026-01-01T00:00:00Z",
+            "time_out": "2026-01-01T00:00:00Z",
+        }
+    )
 
 
 def data_msg(channel: str, symbol: str, extra: dict | None = None) -> str:
     """Return a JSON data message for the given channel/symbol."""
-    return json.dumps({
-        "channel": channel,
-        "type": "snapshot",
-        "data": [{"symbol": symbol, "price": 100.0, **(extra or {})}],
-    })
+    return json.dumps(
+        {
+            "channel": channel,
+            "type": "snapshot",
+            "data": [{"symbol": symbol, "price": 100.0, **(extra or {})}],
+        }
+    )
 
 
 def heartbeat() -> str:
@@ -53,6 +61,7 @@ def heartbeat() -> str:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_data_message_routed_to_subscription_queue(run, client, conn) -> None:
     """A data message for a subscribed (channel, symbol) arrives in its queue."""
@@ -138,7 +147,10 @@ def test_multiple_symbols_routed_independently(run, client, conn) -> None:
 
 def test_ohlc_snapshot_with_multiple_candles_enqueued_once(run, client, conn) -> None:
     """An OHLC snapshot with N candles for one symbol is queued exactly once, not N times."""
-    candles = [{"symbol": "BTC/USD", "open": 100.0, "close": 101.0, "interval": i} for i in range(10)]
+    candles = [
+        {"symbol": "BTC/USD", "open": 100.0, "close": 101.0, "interval": i}
+        for i in range(10)
+    ]
     snapshot = json.dumps({"channel": "ohlc", "type": "snapshot", "data": candles})
     run(conn.push(ack("ohlc", "BTC/USD")))
     run(client.subscribe("ohlc", ["BTC/USD"]))

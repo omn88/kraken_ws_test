@@ -1,4 +1,5 @@
 """Fixtures for unit tests — no network, no Kraken dependency."""
+
 import asyncio
 
 import pytest
