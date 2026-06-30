@@ -50,7 +50,8 @@ def test_keepalive_ping_pong(run, live_client: KrakenWSClient) -> None:
     t_in = datetime.fromisoformat(pong["time_in"].replace("Z", "+00:00"))
     t_out = datetime.fromisoformat(pong["time_out"].replace("Z", "+00:00"))
     assert t_in <= t_out, f"time_in {t_in} is after time_out {t_out}"
-    assert (t_out - t_in).total_seconds() < 1.0
+    delta = (t_out - t_in).total_seconds()
+    assert delta < 1.0, f"pong processing time {delta:.3f}s exceeds 1s threshold"
 
 
 def test_multiple_subscriptions_demultiplexed(run, live_client: KrakenWSClient) -> None:

@@ -24,7 +24,9 @@ def test_ohlc_candle_ordering(symbol: str, run, live_client: KrakenWSClient) -> 
     msg = run(live_client.next_message("ohlc", symbol, timeout=10))
     run(live_client.unsubscribe("ohlc", [symbol]))
     timestamps = [candle["interval_begin"] for candle in msg["data"]]
-    assert timestamps == sorted(timestamps)
+    assert timestamps == sorted(timestamps), (
+        f"candles not in chronological order: {timestamps}"
+    )
 
 
 @pytest.mark.parametrize("symbol", SYMBOLS)

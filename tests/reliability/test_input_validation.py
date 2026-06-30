@@ -38,5 +38,6 @@ def test_subscribe_ack_shape_and_time_fields(run, live_client: KrakenWSClient) -
     assert isinstance(ack["time_out"], str) and ack["time_out"]
     t_in = datetime.fromisoformat(ack["time_in"].replace("Z", "+00:00"))
     t_out = datetime.fromisoformat(ack["time_out"].replace("Z", "+00:00"))
-    assert t_in <= t_out
-    assert (t_out - t_in).total_seconds() < 1.0
+    assert t_in <= t_out, f"time_in {t_in} is after time_out {t_out}"
+    delta = (t_out - t_in).total_seconds()
+    assert delta < 1.0, f"ack processing time {delta:.3f}s exceeds 1s threshold"

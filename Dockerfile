@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "-m", "pytest", "tests/", "-v"]
+CMD ["python", "-m", "pytest", "tests/", "-v", "--color=yes"]

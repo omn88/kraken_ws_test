@@ -123,7 +123,7 @@ class KrakenWSClient:
     async def _read_loop(self) -> None:
         """Decode every incoming frame and route it to the right queue.
 
-        Routing rules (see CLAUDE.md §11):
+        Routing rules:
         - 'method' key present  → _acks (subscribe/unsubscribe confirmations)
         - 'data' list with symbol fields → (channel, symbol) queue per unique
           symbol; whole message goes into _unmatched if no key matches
