@@ -1,6 +1,7 @@
 """Fixtures for unit tests — no network, no Kraken dependency."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -8,10 +9,11 @@ from kraken_ws.client import KrakenWSClient
 
 
 class StubConnection:
-    """Async-iterable stub driven by an internal asyncio.Queue.
+    """Async-iterable Kraken connection simulator driven by an internal asyncio.Queue.
 
-    Tests push messages via conn.push(raw_json) at the right moment so there
-    is no race between the read loop and subscription queue creation.
+    Tests push Kraken-shaped messages via the typed push_* helpers at the right
+    moment so there is no race between the read loop and subscription queue
+    creation.  Raw push() is still available for malformed-input tests.
     """
 
     def __init__(self) -> None:
@@ -20,8 +22,42 @@ class StubConnection:
         self.sent: list[str] = []
 
     async def push(self, msg: str) -> None:
-        """Enqueue a raw JSON string to be yielded by the read loop."""
+        """Enqueue a raw string (use for malformed-frame tests)."""
         await self._queue.put(msg)
+
+    async def push_ack(self, channel: str, symbol: str) -> None:
+        """Enqueue a subscribe-ack for the given channel and symbol."""
+        await self._queue.put(json.dumps({
+            "method": "subscribe",
+            "result": {"channel": channel, "symbol": symbol, "snapshot": True},
+            "success": True,
+            "time_in": "2026-01-01T00:00:00Z",
+            "time_out": "2026-01-01T00:00:00Z",
+        }))
+
+    async def push_unsubscribe_ack(self, channel: str, symbol: str) -> None:
+        """Enqueue an unsubscribe-ack for the given channel and symbol."""
+        await self._queue.put(json.dumps({
+            "method": "unsubscribe",
+            "result": {"channel": channel, "symbol": symbol},
+            "success": True,
+            "time_in": "2026-01-01T00:00:00Z",
+            "time_out": "2026-01-01T00:00:00Z",
+        }))
+
+    async def push_data(
+        self, channel: str, symbol: str, extra: dict | None = None
+    ) -> None:
+        """Enqueue a snapshot data message for the given channel and symbol."""
+        await self._queue.put(json.dumps({
+            "channel": channel,
+            "type": "snapshot",
+            "data": [{"symbol": symbol, "price": 100.0, **(extra or {})}],
+        }))
+
+    async def push_heartbeat(self) -> None:
+        """Enqueue a heartbeat frame."""
+        await self._queue.put(json.dumps({"channel": "heartbeat"}))
 
     def __aiter__(self) -> "StubConnection":
         """Return self as the async iterator."""

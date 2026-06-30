@@ -11,63 +11,11 @@ import asyncio
 import json
 
 
-# ---------------------------------------------------------------------------
-# Message builders
-# ---------------------------------------------------------------------------
-
-
-def ack(channel: str, symbol: str) -> str:
-    """Return a JSON subscribe-ack string for the given channel/symbol."""
-    return json.dumps(
-        {
-            "method": "subscribe",
-            "result": {"channel": channel, "symbol": symbol, "snapshot": True},
-            "success": True,
-            "time_in": "2026-01-01T00:00:00Z",
-            "time_out": "2026-01-01T00:00:00Z",
-        }
-    )
-
-
-def unsubscribe_ack(channel: str, symbol: str) -> str:
-    """Return a JSON unsubscribe-ack string for the given channel/symbol."""
-    return json.dumps(
-        {
-            "method": "unsubscribe",
-            "result": {"channel": channel, "symbol": symbol},
-            "success": True,
-            "time_in": "2026-01-01T00:00:00Z",
-            "time_out": "2026-01-01T00:00:00Z",
-        }
-    )
-
-
-def data_msg(channel: str, symbol: str, extra: dict | None = None) -> str:
-    """Return a JSON data message for the given channel/symbol."""
-    return json.dumps(
-        {
-            "channel": channel,
-            "type": "snapshot",
-            "data": [{"symbol": symbol, "price": 100.0, **(extra or {})}],
-        }
-    )
-
-
-def heartbeat() -> str:
-    """Return a JSON heartbeat message string."""
-    return json.dumps({"channel": "heartbeat"})
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
 def test_data_message_routed_to_subscription_queue(run, client, conn) -> None:
     """A data message for a subscribed (channel, symbol) arrives in its queue."""
-    run(conn.push(ack("ticker", "BTC/USD")))
+    run(conn.push_ack("ticker", "BTC/USD"))
     run(client.subscribe("ticker", ["BTC/USD"]))
-    run(conn.push(data_msg("ticker", "BTC/USD")))
+    run(conn.push_data("ticker", "BTC/USD"))
     msg = run(client.next_message("ticker", "BTC/USD", timeout=2.0))
     assert msg["channel"] == "ticker"
     assert msg["data"][0]["symbol"] == "BTC/USD"
@@ -75,7 +23,7 @@ def test_data_message_routed_to_subscription_queue(run, client, conn) -> None:
 
 def test_unmatched_message_goes_to_unmatched_queue(run, client, conn) -> None:
     """A data message for a channel/symbol with no subscription lands in _unmatched."""
-    run(conn.push(data_msg("ticker", "XBT/USD")))
+    run(conn.push_data("ticker", "XBT/USD"))
     run(asyncio.sleep(0))
     assert not client._unmatched.empty()
     msg = run(client._unmatched.get())
@@ -84,7 +32,7 @@ def test_unmatched_message_goes_to_unmatched_queue(run, client, conn) -> None:
 
 def test_heartbeat_goes_to_unmatched(run, client, conn) -> None:
     """Heartbeat frames (no data key) route to _unmatched, not a subscription queue."""
-    run(conn.push(heartbeat()))
+    run(conn.push_heartbeat())
     run(asyncio.sleep(0))
     msg = run(client._unmatched.get())
     assert msg["channel"] == "heartbeat"
@@ -92,16 +40,16 @@ def test_heartbeat_goes_to_unmatched(run, client, conn) -> None:
 
 def test_ack_goes_to_acks_queue(run, client, conn) -> None:
     """Subscribe-ack messages route to _acks and not to subscription queues."""
-    run(conn.push(ack("ticker", "BTC/USD")))
+    run(conn.push_ack("ticker", "BTC/USD"))
     run(asyncio.sleep(0))
     a = run(client._acks.get())
     assert a["method"] == "subscribe"
-    assert a["success"] is True
+    assert a["success"]
 
 
 def test_subscribe_creates_queue_and_sends_frame(run, client, conn) -> None:
     """subscribe() creates a (channel, symbol) queue entry and sends a subscribe frame."""
-    run(conn.push(ack("trade", "ETH/USD")))
+    run(conn.push_ack("trade", "ETH/USD"))
     run(client.subscribe("trade", ["ETH/USD"]))
     assert ("trade", "ETH/USD") in client._queues
     assert len(conn.sent) == 1
@@ -113,32 +61,32 @@ def test_subscribe_creates_queue_and_sends_frame(run, client, conn) -> None:
 
 def test_unsubscribe_drops_queue_after_ack(run, client, conn) -> None:
     """unsubscribe() removes the (channel, symbol) queue only after the ack arrives."""
-    run(conn.push(ack("ticker", "BTC/USD")))
+    run(conn.push_ack("ticker", "BTC/USD"))
     run(client.subscribe("ticker", ["BTC/USD"]))
     assert ("ticker", "BTC/USD") in client._queues
-    run(conn.push(unsubscribe_ack("ticker", "BTC/USD")))
+    run(conn.push_unsubscribe_ack("ticker", "BTC/USD"))
     run(client.unsubscribe("ticker", ["BTC/USD"]))
     assert ("ticker", "BTC/USD") not in client._queues
 
 
 def test_post_unsubscribe_messages_go_to_unmatched(run, client, conn) -> None:
     """Messages arriving after unsubscribe route to _unmatched, not the dropped queue."""
-    run(conn.push(ack("ticker", "BTC/USD")))
+    run(conn.push_ack("ticker", "BTC/USD"))
     run(client.subscribe("ticker", ["BTC/USD"]))
-    run(conn.push(unsubscribe_ack("ticker", "BTC/USD")))
+    run(conn.push_unsubscribe_ack("ticker", "BTC/USD"))
     run(client.unsubscribe("ticker", ["BTC/USD"]))
-    run(conn.push(data_msg("ticker", "BTC/USD")))
+    run(conn.push_data("ticker", "BTC/USD"))
     run(asyncio.sleep(0))
     assert not client._unmatched.empty()
 
 
 def test_multiple_symbols_routed_independently(run, client, conn) -> None:
     """Two subscribed symbols on the same channel each receive only their own messages."""
-    run(conn.push(ack("ticker", "BTC/USD")))
-    run(conn.push(ack("ticker", "ETH/USD")))
+    run(conn.push_ack("ticker", "BTC/USD"))
+    run(conn.push_ack("ticker", "ETH/USD"))
     run(client.subscribe("ticker", ["BTC/USD", "ETH/USD"]))
-    run(conn.push(data_msg("ticker", "BTC/USD")))
-    run(conn.push(data_msg("ticker", "ETH/USD")))
+    run(conn.push_data("ticker", "BTC/USD"))
+    run(conn.push_data("ticker", "ETH/USD"))
     btc = run(client.next_message("ticker", "BTC/USD", timeout=2.0))
     eth = run(client.next_message("ticker", "ETH/USD", timeout=2.0))
     assert btc["data"][0]["symbol"] == "BTC/USD"
@@ -152,7 +100,7 @@ def test_ohlc_snapshot_with_multiple_candles_enqueued_once(run, client, conn) ->
         for i in range(10)
     ]
     snapshot = json.dumps({"channel": "ohlc", "type": "snapshot", "data": candles})
-    run(conn.push(ack("ohlc", "BTC/USD")))
+    run(conn.push_ack("ohlc", "BTC/USD"))
     run(client.subscribe("ohlc", ["BTC/USD"]))
     run(conn.push(snapshot))
     run(asyncio.sleep(0))
