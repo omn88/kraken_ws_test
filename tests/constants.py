@@ -6,4 +6,3 @@ symbols with no recent activity.
 """
 
 SYMBOLS: list[str] = ["BTC/USD", "ETH/USD"]
-CHANNELS: list[str] = ["ticker", "trade", "ohlc"]
