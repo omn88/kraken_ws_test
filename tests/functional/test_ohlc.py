@@ -1,26 +1,16 @@
 """Functional tests for the ohlc channel."""
-
-import asyncio
-
 import pytest
 
 from kraken_ws.client import KrakenWSClient
 from tests.constants import SYMBOLS
 
 
-async def _first_message(symbol: str) -> dict:
-    """Connect, subscribe to ohlc (1-minute candles), return the snapshot, then close."""
-    async with KrakenWSClient() as client:
-        await client.subscribe("ohlc", [symbol], interval=1)
-        msg = await client.next_message("ohlc", symbol, timeout=10)
-        await client.unsubscribe("ohlc", [symbol])
-    return msg
-
-
 @pytest.mark.parametrize("symbol", SYMBOLS)
-def test_ohlc_snapshot_received(symbol: str) -> None:
+def test_ohlc_snapshot_received(symbol: str, run, live_client: KrakenWSClient) -> None:
     """Subscribing to ohlc produces a snapshot with at least one candle."""
-    msg = asyncio.run(_first_message(symbol))
+    run(live_client.subscribe("ohlc", [symbol], interval=1))
+    msg = run(live_client.next_message("ohlc", symbol, timeout=10))
+    run(live_client.unsubscribe("ohlc", [symbol]))
     assert msg["channel"] == "ohlc"
     assert msg["type"] == "snapshot"
     assert len(msg["data"]) >= 1
@@ -28,17 +18,21 @@ def test_ohlc_snapshot_received(symbol: str) -> None:
 
 
 @pytest.mark.parametrize("symbol", SYMBOLS)
-def test_ohlc_candle_ordering(symbol: str) -> None:
+def test_ohlc_candle_ordering(symbol: str, run, live_client: KrakenWSClient) -> None:
     """Candles in the snapshot are ordered chronologically by interval_begin."""
-    msg = asyncio.run(_first_message(symbol))
+    run(live_client.subscribe("ohlc", [symbol], interval=1))
+    msg = run(live_client.next_message("ohlc", symbol, timeout=10))
+    run(live_client.unsubscribe("ohlc", [symbol]))
     timestamps = [candle["interval_begin"] for candle in msg["data"]]
     assert timestamps == sorted(timestamps)
 
 
 @pytest.mark.parametrize("symbol", SYMBOLS)
-def test_ohlc_schema(symbol: str) -> None:
+def test_ohlc_schema(symbol: str, run, live_client: KrakenWSClient) -> None:
     """OHLC candle contains all expected fields with correct types."""
-    msg = asyncio.run(_first_message(symbol))
+    run(live_client.subscribe("ohlc", [symbol], interval=1))
+    msg = run(live_client.next_message("ohlc", symbol, timeout=10))
+    run(live_client.unsubscribe("ohlc", [symbol]))
     candle = msg["data"][0]
     assert isinstance(candle["open"], float)
     assert isinstance(candle["high"], float)

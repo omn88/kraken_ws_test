@@ -26,12 +26,22 @@ class KrakenWSClient:
 
         Inject _connection (any async-iterable with a send() coroutine) to
         bypass the real network — used by unit tests in tests/unit/.
+
+        Retries up to 3 times with exponential backoff on HTTP 429 so that
+        running the full suite (many connections in quick succession) does not
+        fail due to Kraken's per-IP connection rate limit.
         """
-        self._ws = (
-            _connection
-            if _connection is not None
-            else await websockets.connect(self.url)
-        )
+        if _connection is not None:
+            self._ws = _connection
+        else:
+            for attempt in range(3):
+                try:
+                    self._ws = await websockets.connect(self.url)
+                    break
+                except websockets.exceptions.InvalidStatus as exc:
+                    if "429" not in str(exc) or attempt == 2:
+                        raise
+                    await asyncio.sleep(2 ** attempt)  # 1 s, then 2 s
         self._reader_task = asyncio.create_task(self._read_loop())
 
     async def subscribe(
