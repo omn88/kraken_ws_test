@@ -1,0 +1,143 @@
+KRAKEN WEBSOCKET TEST SUITE — TEST STRATEGY & RATIONALE
+=========================================================
+
+SUMMARY
+-------
+42 tests total: 32 live-API tests (19 functional across 5 channels + 13
+reliability) and 10 unit tests of the client implementation itself.
+
+APPROACH
+--------
+This suite treats Kraken's public WebSocket API (v2) as a legacy service
+with no existing test coverage, per the assignment's framing. The goal was
+a regression net that captures real, currently-observed behavior — message
+schema, ordering guarantees, and a handful of protocol-level invariants —
+rather than a redesign of how the API "should" work.
+
+Three channels form the required floor: ticker, trade, and ohlc. The book
+channel was implemented as a stretch goal in a deliberately bounded form:
+snapshot-level schema and CRC32 checksum validation, plus a short fixed-length
+incremental window (see DESIGN TRADE-OFFS below). A fifth channel, instrument,
+was added to validate that the hardcoded symbol list (BTC/USD, ETH/USD) still
+refers to live, active trading pairs — confirming an assumption the entire
+suite depends on rather than leaving it implicit.
+
+
+CHANNEL SELECTION — A NOTE ON "ORDERS"
+---------------------------------------
+The assignment lists "Orders" among its example public channels. Checking
+against Kraken's live v2 API directly, this maps to the Level3 channel,
+which actually requires an authenticated session token — it is not
+genuinely public, which contradicts the assignment's "no account needed"
+framing. It was excluded from scope for that reason, not overlooked. Noting
+this here as evidence the live API was verified rather than the prompt
+being taken at face value.
+
+TEST CATEGORIES
+----------------
+1. Functional (tests/functional/) — schema and type validation per channel:
+   correct symbol echoed back in each message, expected field types, sane
+   value relationships (e.g. bid < ask). These validate the basic contract
+   of each channel holds.
+
+2. Reliability / non-functional (tests/reliability/) — invariants that
+   matter for a live, asynchronous feed specifically, rather than a static
+   request/response API:
+   - Timestamp monotonicity within a single feed
+   - Book non-crossing invariant and CRC32 checksum integrity (bounded window)
+   - Reconnect and re-subscribe recovery after a forced disconnect
+   - Idle-timeout / keepalive behavior via the application-level ping/pong
+   - Subscription acknowledgment latency
+   - Multiple concurrent subscriptions correctly demultiplexed on one socket
+   - Graceful unsubscribe (no further messages for that channel/symbol
+     after unsubscribing)
+   - Invalid input handling (malformed symbol/channel value produces a
+     structured error response, not a silent failure or a dropped
+     connection)
+   - Schema stability: field names and types are consistent across N
+     consecutive messages, not just the first one
+
+   These were chosen because the real risk in a live feed isn't "does it
+   return JSON" — it's ordering, consistency under concurrent subscriptions,
+   and recovery behavior after a disruption. Those are the things that would
+   actually break a consumer of this feed in production.
+
+3. Unit tests (tests/unit/) — these test the client implementation itself
+   (kraken_ws/client.py), not Kraken: message routing into the correct
+   per-subscription queue, unmatched messages being captured rather than
+   silently discarded, and queue lifecycle on subscribe/unsubscribe. They
+   run against an injected stub connection with no network calls. Kept
+   deliberately separate from the counts above — they validate the test
+   harness itself and aren't counted toward the channel/test-count
+   requirement.
+
+KEY ASSUMPTIONS
+----------------
+- API version v2 (wss://ws.kraken.com/v2) was used throughout: it's the
+  current production version and uses named JSON fields rather than v1's
+  positional arrays, which made schema validation considerably cleaner.
+- Symbol coverage is a small, deliberately static list of liquid pairs
+  (BTC/USD and ETH/USD) rather than the full live tradable-pairs list.
+  A regression suite should behave identically run to run; pulling the live
+  pair list dynamically would make test count and runtime vary for reasons
+  unrelated to code correctness, and risks hanging on a thinly-traded pair
+  with no recent activity.
+- No dependencies beyond `websockets` and `pytest` were used, per the
+  assignment's restriction on dependencies outside a basic WebSocket
+  library and test framework. Type hints (standard library `typing`) were
+  used throughout in place of a static type checker, since adding one
+  wasn't justified under that restriction.
+- Both dependencies are pinned to exact versions (websockets==16.0,
+  pytest==9.1.1) rather than using version ranges or "latest". Exact pins
+  guarantee that the suite runs identically on any machine and eliminate
+  the risk of a transitive upgrade silently changing behavior. For a
+  security-sensitive context this also prevents a compromised upstream
+  release from being pulled in automatically.
+
+DESIGN TRADE-OFFS
+-------------------
+- Order book reconstruction: full continuous reconstruction (gap detection,
+  resync after a disconnect, long-running drift handling) is a genuine
+  production engineering problem, not something scoped for a 3-day
+  take-home. What was built instead is a deliberately bounded version:
+  snapshot-level checks (schema, bid/ask non-crossing, CRC32 checksum
+  recomputed from the top levels and matched against what Kraken sent), plus
+  a short fixed-length incremental window (up to 20 update messages applied
+  to a local book state, checksum verified after each). The incremental
+  window subscribes at depth=25 rather than the default 10: Kraken's
+  checksum always covers the top 10 price levels, so the extra 15 levels
+  provide a buffer — a qty=0 removal from the top 10 still leaves enough
+  local state to reconstruct the server's checksum. With depth=10 a single
+  removal causes immediate divergence because the server's new 10th level
+  was never sent to the client.
+- Frame-level protocol manipulation (malformed opcodes, broken masking,
+  oversized payloads) was deliberately not used against the live endpoint —
+  doing so would edge toward probing the server's own protocol-handling
+  robustness, which the assignment explicitly asks not to do. Input
+  validation was instead tested at the message level (malformed
+  symbol/channel values inside otherwise well-formed frames), which the
+  assignment explicitly invites.
+- WebSocket connection strategy: the initial design opened a fresh
+  connection per test function, which kept each test fully self-contained
+  but caused Kraken's server to return HTTP 429 (Too Many Requests) when
+  running the full suite — 27 connections in rapid succession exceeded the
+  per-IP rate limit. The fix was to switch to a single session-scoped
+  shared connection managed by a pytest fixture (tests/conftest.py). Per-test
+  isolation is preserved through the queue lifecycle in KrakenWSClient:
+  subscribe() creates a fresh queue for each (channel, symbol) pair and
+  unsubscribe() tears it down, so each test gets a logically clean inbox
+  despite sharing the underlying socket.
+
+WHAT I'D ADD WITH MORE TIME
+-----------------------------
+- Full continuous order book reconstruction with gap detection and resync
+  after a disconnect, rather than the bounded window used here.
+- Wider coverage of reconnect failure modes (disconnect mid-message vs.
+  between messages, repeated rapid disconnects).
+- A true idle-timeout test: hold a connection open with no activity for 60+
+  seconds and assert the server drops it, then verify that sending an
+  application-level ping within the window keeps the connection alive
+  through the timeout. The existing test_keepalive_ping_pong validates the
+  ping/pong mechanism but not the timeout enforcement or its prevention.
+  Omitted here because it adds a mandatory 60+ second wait to every suite
+  run and the exact threshold could change on Kraken's side without notice.
