@@ -8,6 +8,7 @@ Unit tests (tests/unit/) have their own function-scoped event_loop and run
 fixtures in tests/unit/conftest.py which shadow these for that directory.
 """
 import asyncio
+from collections.abc import Iterator
 
 import pytest
 
@@ -15,7 +16,7 @@ from kraken_ws.client import KrakenWSClient
 
 
 @pytest.fixture(scope="session")
-def _session_loop() -> asyncio.AbstractEventLoop:
+def session_loop() -> Iterator[asyncio.AbstractEventLoop]:
     """A single event loop shared across all live tests in the session."""
     loop = asyncio.new_event_loop()
     yield loop
@@ -23,13 +24,13 @@ def _session_loop() -> asyncio.AbstractEventLoop:
 
 
 @pytest.fixture(scope="session")
-def run(_session_loop: asyncio.AbstractEventLoop):
+def run(session_loop: asyncio.AbstractEventLoop):
     """Run a coroutine to completion on the session event loop."""
-    return _session_loop.run_until_complete
+    return session_loop.run_until_complete
 
 
 @pytest.fixture(scope="session")
-def live_client(run) -> KrakenWSClient:
+def live_client(run) -> Iterator[KrakenWSClient]:
     """One shared WebSocket connection for the entire live test session."""
     client = KrakenWSClient()
     run(client.connect())
