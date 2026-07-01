@@ -1,5 +1,5 @@
 """Functional tests for the ticker channel."""
-import pytest
+import pytest  # pylint: disable=import-error
 
 from kraken_ws.client import KrakenWSClient
 from tests.constants import SYMBOLS

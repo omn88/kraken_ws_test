@@ -1,8 +1,9 @@
+"""WebSocket client for Kraken v2 public API with per-subscription queue routing."""
 import asyncio
 import json
 from typing import Any, Optional
 
-import websockets
+import websockets  # pylint: disable=import-error
 
 
 class KrakenWSClient:

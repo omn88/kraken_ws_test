@@ -10,7 +10,9 @@ fixtures in tests/unit/conftest.py which shadow these for that directory.
 import asyncio
 from collections.abc import Iterator
 
-import pytest
+import pytest  # pylint: disable=import-error
+
+# pylint: disable=redefined-outer-name  # standard pytest fixture pattern
 
 from kraken_ws.client import KrakenWSClient
 

@@ -10,6 +10,8 @@ _unmatched queue. The channel may also send "update" messages after the initial
 snapshot when reference data changes; none were observed during testing, but the
 helper only needs the snapshot so this does not affect correctness.
 """
+# pylint: disable=protected-access  # intentional for testing internal state
+
 import asyncio
 import json
 from typing import Any
@@ -44,5 +46,6 @@ def test_instrument_symbols_are_active(run) -> None:
         )
         status = by_symbol[symbol]["status"]
         assert status != "delisted", (
-            f"{symbol} has status {status!r}; expected an active status (online/post_only/cancel_only)"
+            f"{symbol} has status {status!r}; "
+            f"expected an active status (online/post_only/cancel_only)"
         )

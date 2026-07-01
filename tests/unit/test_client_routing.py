@@ -6,6 +6,7 @@ client lifecycle are managed by fixtures in tests/unit/conftest.py.
 Keep this count separate from functional/reliability tests that satisfy the
 >=10 / >=3-channel submission requirement.
 """
+# pylint: disable=protected-access  # intentional for testing internal queues
 
 import asyncio
 import json

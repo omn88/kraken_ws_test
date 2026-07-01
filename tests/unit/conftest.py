@@ -3,7 +3,9 @@
 import asyncio
 import json
 
-import pytest
+import pytest  # pylint: disable=import-error
+
+# pylint: disable=redefined-outer-name  # standard pytest fixture pattern
 
 from kraken_ws.client import KrakenWSClient
 

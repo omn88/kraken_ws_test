@@ -1,4 +1,6 @@
 """Reliability tests: reconnection, keepalive, and concurrent subscriptions."""
+# pylint: disable=protected-access  # intentional for testing internal state
+
 from datetime import datetime
 
 from kraken_ws.client import KrakenWSClient
@@ -55,7 +57,9 @@ def test_keepalive_ping_pong(run, live_client: KrakenWSClient) -> None:
 
 
 def test_multiple_subscriptions_demultiplexed(run, live_client: KrakenWSClient) -> None:
-    """Ticker and ohlc on one connection each deliver correctly shaped, correctly routed messages."""
+    """Ticker and ohlc on one connection each deliver correctly shaped,
+    correctly routed messages.
+    """
     run(live_client.subscribe("ticker", [SYMBOL]))
     run(live_client.subscribe("ohlc", [SYMBOL], interval=1))
     ticker_msg = run(live_client.next_message("ticker", SYMBOL, timeout=10))
